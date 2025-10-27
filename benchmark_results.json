@@ -1,0 +1,32 @@
+{
+  "configuration": {
+    "n_images": 1000,
+    "batch_size": 8,
+    "timesteps": 100,
+    "config_file": "configs/celeba.yml",
+    "checkpoint": "ckpt.pth",
+    "device": "cuda"
+  },
+  "without_caching": {
+    "time": 408.85668182373047,
+    "throughput": 2.445844826454684,
+    "images_generated": 1000
+  },
+  "with_caching": {
+    "time": 293.45048475265503,
+    "throughput": 3.4077299304613002,
+    "images_generated": 1000
+  },
+  "performance": {
+    "speedup": 1.393273151919819,
+    "time_saved": 115.40619707107544,
+    "time_saved_percent": 28.226565004709958
+  },
+  "image_comparison": {
+    "identical_count": 8,
+    "different_count": 992,
+    "identical_percent": 0.8,
+    "avg_diff": 12.73973404947917,
+    "max_diff": 13.64453125
+  }
+}

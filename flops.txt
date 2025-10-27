@@ -1,0 +1,11 @@
+--- Model Statistics ---
+Total parameters: 78.70 M
+Trainable parameters: 78.70 M
+
+--- Runtime ---
+Baseline model average forward time: 11.99 ms
+Caching model average forward time: 11.98 ms
+
+--- FLOPs ---
+Baseline FLOPs: 48.18 GFLOPs
+Caching model avg FLOPs: 44.96 GFLOPs
