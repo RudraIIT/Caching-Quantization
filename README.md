@@ -1,119 +1,247 @@
-# Denoising Diffusion Implicit Models (DDIM)
+# Caching-Quantization
 
-[Jiaming Song](http://tsong.me), [Chenlin Meng](http://cs.stanford.edu/~chenlin) and [Stefano Ermon](http://cs.stanford.edu/~ermon), Stanford
+A framework for optimizing diffusion model inference through intelligent activation caching and quantization techniques.
 
-Implements sampling from an implicit model that is trained with the same procedure as [Denoising Diffusion Probabilistic Model](https://hojonathanho.github.io/diffusion/), but costs much less time and compute if you want to sample from it (click image below for a video demo):
+## Overview
 
-<a href="http://www.youtube.com/watch?v=WCKzxoSduJQ" target="_blank">![](http://img.youtube.com/vi/WCKzxoSduJQ/0.jpg)</a>
+This project implements (DPS) for efficient caching of neural network activations during diffusion model inference. By identifying and caching redundant activations across timesteps, we can significantly reduce memory consumption and computational overhead.
 
-## **Integration with 🤗 Diffusers library**
+## Key Features
 
-DDIM is now also available in 🧨 Diffusers and accesible via the [DDIMPipeline](https://huggingface.co/docs/diffusers/api/pipelines/ddim).
-Diffusers allows you to test DDIM in PyTorch in just a couple lines of code.
+- **Activation Recording**: Capture and save model activations across different timesteps
+- **DPS Scheduling**: Compute optimal caching schedules based on activation similarity
+- **Flexible Caching**: Multiple caching strategies including standard, deep, and CKA-based approaches
+- **Diffusion Model Support**: Full integration with diffusion-based generative models
 
-You can install diffusers as follows:
+## Project Structure
 
 ```
-pip install diffusers torch accelerate
+├── main.py                      # Entry point for training/sampling
+├── save_activations.py          # Script to record model activations
+├── dps.py                       # Dynamic Priority Scheduling implementation
+├── check_activations.py         # Validation utilities for saved activations
+├── benchmark_generation.py      # Benchmarking tools
+├── benchmark_results.json       # Results from benchmarking runs
+│
+├── caching/                     # Caching implementations
+│   ├── caching_wrapper.py       # Base caching wrapper
+│   ├── deep_cache_wrapper.py    # Deep caching strategy
+│   └── cka_cache_wrapper.py     # CKA-based caching
+│
+├── configs/                     # Configuration files
+│   ├── cifar10.yml
+│   ├── cifar10_with_caching.yml
+│   ├── celeba.yml
+│   ├── bedroom.yml
+│   └── church.yml
+│
+├── datasets/                    # Data handling
+│   ├── __init__.py
+│   ├── celeba.py
+│   ├── ffhq.py
+│   ├── lsun.py
+│   ├── vision.py
+│   └── utils.py
+│
+├── functions/                   # Utility functions
+│   ├── ckpt_util.py            # Checkpoint utilities
+│   ├── denoising.py            # Denoising functions
+│   ├── losses.py               # Loss functions
+│   └── __init__.py
+│
+├── models/                      # Model definitions
+│   ├── diffusion.py            # Diffusion model architecture
+│   ├── ema.py                  # Exponential Moving Average
+│   └── __init__.py
+│
+└── runners/                     # Training and evaluation runners
+    ├── diffusion.py            # Main diffusion runner
+    └── __init__.py
 ```
 
-And then try out the model with just a couple lines of code:
+## Usage
+
+### Step 1: Record Activations
+
+Save model activations for a specific configuration:
+
+```bash
+python save_activations.py \
+    --config celeba.yml \
+    --ckpt path/to/checkpoint.pth \
+    --timesteps 0,1,2,...,999 \
+    --save_dir ./activations
+```
+
+**Options:**
+- `--config`: Configuration file to use (default: `celeba.yml`)
+- `--ckpt`: Path to model checkpoint
+- `--timesteps`: Comma-separated list of timesteps to record
+- `--save_dir`: Directory to save activation files (default: `activations`)
+- `--save_per_timestep`: Save each timestep to a separate file
+- `--batch_size`: Batch size for generation (default: 1)
+
+### Step 2: Compute Caching Schedule
+
+Calculate the optimal caching schedule using Dynamic Priority Scheduling:
+
+```bash
+python dps.py
+```
+
+This script:
+1. Loads saved activations from the specified directory
+2. Computes similarity matrix between timesteps using activation correlation
+3. Identifies groups of similar timesteps that can share cached activations
+4. Returns an optimized caching schedule
+
+**Parameters** (edit in `dps.py`):
+- `timesteps`: List of timesteps to process
+- `save_dir`: Directory containing saved activations
+- `threshold`: Similarity threshold for grouping (default: 0.98)
+- `max_group_size`: Maximum number of timesteps per cache group
+
+### Step 3: Apply Caching Strategy
+
+Use the computed schedule with one of the caching wrappers:
 
 ```python
-from diffusers import DDIMPipeline
+from caching.caching_wrapper import CachingWrapper
+from dps import DPS_schedule
 
-model_id = "google/ddpm-cifar10-32"
+# Load the caching schedule
+schedule = DPS_schedule(save_dir, timesteps)
 
-# load model and scheduler
-ddim = DDIMPipeline.from_pretrained(model_id)
+# Wrap your model with caching
+cached_model = CachingWrapper(model, schedule)
 
-# run pipeline in inference (sample random noise and denoise)
-image = ddim(num_inference_steps=50).images[0]
-
-# save image
-image.save("ddim_generated_image.png")
+# Use the wrapped model in inference
+output = cached_model(x, t)
 ```
 
-More DDPM/DDIM models compatible with hte DDIM pipeline can be found directly [on the Hub](https://huggingface.co/models?library=diffusers&sort=downloads&search=ddpm)
+### Training/Sampling
 
-To better understand the DDIM scheduler, you can check out [this introductionary google colab](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb)
+Run the main pipeline:
 
-The DDIM scheduler can also be used with more powerful diffusion models such as [Stable Diffusion](https://huggingface.co/docs/diffusers/v0.7.0/en/api/pipelines/stable_diffusion#stable-diffusion-pipelines)
-
-You simply need to [accept the license on the Hub](https://huggingface.co/runwayml/stable-diffusion-v1-5), login with `huggingface-cli login` and install transformers:
-
-```
-pip install transformers
-```
-
-Then you can run:
-
-```python
-from diffusers import StableDiffusionPipeline, DDIMScheduler
-
-ddim = DDIMScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=ddim)
-
-image = pipeline("An astronaut riding a horse.").images[0]
-
-image.save("astronaut_riding_a_horse.png")
+```bash
+python main.py \
+    --config cifar10.yml \
+    --doc exp_name \
+    --sample \
+    --ni
 ```
 
-## Running the Experiments
-The code has been tested on PyTorch 1.6.
+**Common arguments:**
+- `--config`: Configuration file path
+- `--doc`: Experiment name/documentation
+- `--sample`: Generate samples
+- `--test`: Test mode
+- `--resume_training`: Resume from checkpoint
+- `--seed`: Random seed (default: 1234)
+- `--ni`: No interaction mode (for batch jobs)
 
-### Train a model
-Training is exactly the same as DDPM with the following:
-```
-python main.py --config {DATASET}.yml --exp {PROJECT_PATH} --doc {MODEL_NAME} --ni
-```
+## Caching Strategies
 
-### Sampling from the model
+### Standard Caching (`caching_wrapper.py`)
+Basic activation caching that stores and retrieves activations based on timestep similarity.
 
-#### Sampling from the generalized model for FID evaluation
-```
-python main.py --config {DATASET}.yml --exp {PROJECT_PATH} --doc {MODEL_NAME} --sample --fid --timesteps {STEPS} --eta {ETA} --ni
-```
-where 
-- `ETA` controls the scale of the variance (0 is DDIM, and 1 is one type of DDPM).
-- `STEPS` controls how many timesteps used in the process.
-- `MODEL_NAME` finds the pre-trained checkpoint according to its inferred path.
+### Deep Caching (`deep_cache_wrapper.py`)
+Implements deeper caching strategies that leverage multiple layers of the network.
 
-If you want to use the DDPM pretrained model:
-```
-python main.py --config {DATASET}.yml --exp {PROJECT_PATH} --use_pretrained --sample --fid --timesteps {STEPS} --eta {ETA} --ni
-```
-the `--use_pretrained` option will automatically load the model according to the dataset.
+### CKA Caching (`cka_cache_wrapper.py`)
+Uses Centered Kernel Alignment (CKA) for more sophisticated similarity metrics between activations.
 
-We provide a CelebA 64x64 model [here](https://drive.google.com/file/d/1R_H-fJYXSH79wfSKs9D-fuKQVan5L-GR/view?usp=sharing), and use the DDPM version for CIFAR10 and LSUN.
+## Configuration Files
 
-If you want to use the version with the larger variance in DDPM: use the `--sample_type ddpm_noisy` option.
+Configuration files (YAML format) define:
+- Model architecture parameters
+- Dataset settings
+- Training hyperparameters
+- Data augmentation options
 
-#### Sampling from the model for image inpainting 
-Use `--interpolation` option instead of `--fid`.
+Example structure:
+```yaml
+model:
+  in_channels: 3
+  out_channels: 3
+  # ... more architecture details
 
-#### Sampling from the sequence of images that lead to the sample
-Use `--sequence` option instead.
+data:
+  image_size: 32
+  dataset: cifar10
+  # ... more data settings
 
-The above two cases contain some hard-coded lines specific to producing the image, so modify them according to your needs.
-
-
-## References and Acknowledgements
-```
-@article{song2020denoising,
-  title={Denoising Diffusion Implicit Models},
-  author={Song, Jiaming and Meng, Chenlin and Ermon, Stefano},
-  journal={arXiv:2010.02502},
-  year={2020},
-  month={October},
-  abbr={Preprint},
-  url={https://arxiv.org/abs/2010.02502}
-}
+training:
+  batch_size: 128
+  learning_rate: 0.0001
+  # ... more training details
 ```
 
+## Evaluation
 
-This implementation is based on / inspired by:
+### Benchmark Generation
 
-- [https://github.com/hojonathanho/diffusion](https://github.com/hojonathanho/diffusion) (the DDPM TensorFlow repo), 
-- [https://github.com/pesser/pytorch_diffusion](https://github.com/pesser/pytorch_diffusion) (PyTorch helper that loads the DDPM model), and
-- [https://github.com/ermongroup/ncsnv2](https://github.com/ermongroup/ncsnv2) (code structure).
+Generate performance benchmarks:
+
+```bash
+python benchmark_generation.py
+```
+
+This creates `benchmark_results.json` with metrics on:
+- Memory consumption
+- Inference speed
+- Quality metrics (FID, etc.)
+
+### FID Evaluation
+
+```bash
+python fid_eval.py
+```
+
+### FLOP Analysis
+
+```bash
+python flop_eval.py
+```
+
+## Requirements
+
+- Python 3.8+
+- PyTorch
+- NumPy
+- NetworkX (for graph-based scheduling)
+- PyYAML (for configuration)
+
+## Installation
+
+```bash
+# Clone the repository
+git clone <repository>
+cd Caching-Quantization
+
+# Install dependencies
+pip install torch numpy pyyaml networkx
+```
+
+## Workflow Summary
+
+1. **Record**: Capture activations using `save_activations.py`
+2. **Schedule**: Compute optimal caching using `dps.py`
+3. **Cache**: Apply caching wrapper with the computed schedule
+4. **Evaluate**: Benchmark improvements with `benchmark_generation.py`
+
+## Citation
+
+If you use this code in your research, please cite:
+
+```bibtex
+@article{...}
+```
+
+## License
+
+This project is licensed under the terms in the LICENSE file.
+
+## Contact
+
+For questions or issues, please open a GitHub issue.
