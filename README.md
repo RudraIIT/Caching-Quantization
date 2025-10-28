@@ -153,6 +153,8 @@ Uses Centered Kernel Alignment (CKA) for more sophisticated similarity metrics b
 
 ## Configuration Files
 
+There is a sample config also provided.
+
 Configuration files (YAML format) define:
 - Model architecture parameters
 - Dataset settings
@@ -165,6 +167,9 @@ model:
   in_channels: 3
   out_channels: 3
   # ... more architecture details
+
+caching :
+  config_path: '/path'
 
 data:
   image_size: 32
