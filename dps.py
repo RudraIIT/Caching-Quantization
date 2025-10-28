@@ -95,11 +95,54 @@ def DPS_schedule(save_dir, timesteps, device="cuda", name="unet",
     print("✅ Strict grouping done")
     return final_groups
 
+def cached_timesteps(final_groups, num_samples=None):
+    cached = []
+    
+    for group in final_groups:
+        group_sorted = sorted(group)
+        group_size = len(group_sorted)
+        
+        if group_size == 0:
+            continue
+        
+        if num_samples is not None:
+            n_samples = min(num_samples, group_size)
+        else:
+            n_samples = max(1, group_size // 3)
+        
+        if n_samples == 1:
+            sampled_indices = [0]
+        else:
+            sampled_indices = [
+                int(i * (group_size - 1) / (n_samples - 1)) 
+                for i in range(n_samples)
+            ]
+        
+        sampled_timesteps = [group_sorted[idx] for idx in sampled_indices]
+        
+        cached.extend(sampled_timesteps)
+    
+    return sorted(cached)
+
+def create_config_and_save(cached_timesteps_list):
+    config = {
+        "cached_timesteps": cached_timesteps_list
+    }
+    with open("caching_config.json", "w") as f:
+        import json
+        json.dump(config, f, indent=4)
+    print("Configuration saved to caching_config.json")
+
 if __name__ == "__main__":
     timesteps = list(range(0, 100, 1))
     save_dir = "./activations"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     t0 = time.time()
     schedule = DPS_schedule(save_dir, timesteps, name="unet", max_group_size=None, device=device)
-    print("Optimal caching schedule:", schedule)
+    print("Optimal caching schedule (groups):", schedule)
     print("Time taken:", time.time() - t0)
+    
+    cached = cached_timesteps(schedule)
+    print("Cached timesteps:", cached)
+    print(f"Total cached timesteps: {len(cached)}")
+

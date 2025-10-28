@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+import json
 
 
 def get_timestep_embedding(timesteps, embedding_dim):
@@ -202,17 +203,10 @@ class CKACacheModel(nn.Module):
         resamp_with_conv = config.model.resamp_with_conv
         self.cache = {}
         self.caching_schedule = [] 
-        for i in range(0, 9,3):
-            self.caching_schedule.append(i)
-
-        for i in range(9, 30, 4):
-            self.caching_schedule.append(i)
-
-        for i in range(31, 61, 4):
-            self.caching_schedule.append(i)
-
-        for i in range(62, 99, 5):
-            self.caching_schedule.append(i)
+        with open(config.caching.config_path, "r") as f:
+            caching_config = json.load(f)
+            self.caching_schedule = caching_config.get("cached_timesteps", [])
+    
         self.max_cache_size = 100
 
         self.ch = ch
